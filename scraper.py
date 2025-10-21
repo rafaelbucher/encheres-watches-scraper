@@ -100,53 +100,58 @@ def get_latest_watches():
 
     print(f"🎯 Total montres collectées: {len(watches)}")
     return watches[:TARGET_COUNT]
-    
+
 def generate_html(watches):
     date_str = datetime.datetime.now().strftime('%d/%m/%Y %H:%M')
     
-    # Utilisation d'un TABLEAU pour une présentation claire
+    # 1. Construire le tableau
     table_rows = ""
     if watches:
         table_rows = "".join([
-            f"""
-            <tr>
-                <td><a href="{w['link']}" target="_blank">{w['title']}</a></td>
-                <td>{w['price']}</td>
-                <td>{w['status']}</td>
-                <td>{w['closure']}</td>
-                <td>{w['desc']}</td>
-            </tr>
-            """ for w in watches
+            f'<tr><td><a href="{w["link"]}" target="_blank">{w["title"]}</a></td>'
+            f'<td>{w["price"]}</td><td>{w["status"]}</td><td>{w["closure"]}</td>'
+            f'<td>{w["desc"]}</td></tr>'
+            for w in watches
         ])
     
-    html = f"""
-    <!DOCTYPE html>
-    <html lang="fr">
-    <head>
-        <meta charset="UTF-8">
-        <title>20 Dernières Montres - Enchères Domaine</title>
-        <style>
-            body {{ font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }}
-            h1 {{ color: #000091; }}
-            table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
-            th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
-            th {{ background-color: #f2f2f2; font-weight: bold; }}
-            tr:nth-child(even) {{ background-color: #f9f9f9; }}
-            a {{ color: #000091; text-decoration: none; }}
-            a:hover {{ text-decoration: underline; }}
-            .empty {{ text-align: center; padding: 50px; color: #666; }}
-        </style>
-    </head>
-    <body>
-        <h1>⌚ 20 Dernières Montres Mises en Ligne</h1>
-        <p>Mis à jour le {date_str} | Scraping sur catégorie "Bijoux, mode et art de vivre"</p>
-        <p><strong>{len(watches)}/{TARGET_COUNT}</strong> montres trouvées.</p>
-        
-        {'<div class="empty">Aucune montre trouvée aujourd\'hui. Revenez demain !</div>' if not watches else 
-         f'<table><thead><tr><th>Titre</th><th>Prix</th><th>Statut</th><th>Clôture</th><th>Description</th></tr></thead><tbody>{table_rows}</tbody></table>'}
-    </body>
-    </html>
-    """
+    # 2. Message vide SANS apostrophe (pour éviter le backslash)
+    empty_message = '<div class="empty">Aucune montre trouvée aujourdhui. Revenez demain !</div>'
+    
+    # 3. Contenu conditionnel EN DEHORS de la f-string
+    if watches:
+        content_html = f'''
+            <table>
+                <thead><tr><th>Titre</th><th>Prix</th><th>Statut</th><th>Clôture</th><th>Description</th></tr></thead>
+                <tbody>{table_rows}</tbody>
+            </table>
+        '''
+    else:
+        content_html = empty_message
+    
+    # 4. F-string principale (plus d'expression avec backslash)
+    html = f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>20 Dernières Montres - Enchères Domaine</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }}
+        h1 {{ color: #000091; }}
+        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+        th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
+        th {{ background-color: #f2f2f2; font-weight: bold; }}
+        tr:nth-child(even) {{ background-color: #f9f9f9; }}
+        a {{ color: #000091; text-decoration: none; }}
+        a:hover {{ text-decoration: underline; }}
+        .empty {{ text-align: center; padding: 50px; color: #666; }}
+    </style>
+</head>
+<body>
+    <h1>⌚ 20 Dernières Montres Mises en Ligne</h1>
+    <p>Mis à jour le {date_str} | Scraping sur catégorie "Bijoux, mode et art de vivre"</p>
+    <p><strong>{len(watches)}/20</strong> montres trouvées.</p>
+    {content_html}
+</body></html>"""
     return html
 
 def send_email(html_content, count):
