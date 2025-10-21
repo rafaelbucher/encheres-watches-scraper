@@ -6,167 +6,179 @@ from email.mime.multipart import MIMEMultipart
 import os
 import datetime
 import time
+import re
 
 # --- CONFIGURATION ---
 BASE_URL = "https://encheres-domaine.gouv.fr"
 SEARCH_URL_BASE = "https://encheres-domaine.gouv.fr/hermes/biens-mobiliers/bijoux-mode-et-art-de-vivre"
-KEYWORDS = ['montre', 'horlogerie', 'chronographe', 'rolex', 'omega', 'seiko', 'tocante', 'gousset', 'cartier', 'tag heuer']
+KEYWORDS = ['montre', 'horlogerie', 'chronographe', 'chrono', 'gousset', 'bracelet-montre',
+            'rolex', 'omega', 'seiko', 'tudor', 'cartier', 'tag heuer', 'tag-heuer', 'longines',
+            'tissot', 'breitling', 'iwc', 'jaeger', 'jaeger-lecoultre', 'patek', 'audemars',
+            'vacheron', 'breguet', 'panerai', 'hublot', 'hamilton', 'citizen', 'swatch']
 EMAIL_SENDER = os.environ.get('EMAIL_ADDRESS')
 EMAIL_PASSWORD = os.environ.get('EMAIL_PASSWORD')
 EMAIL_RECEIVER = "rafael.bchr@gmail.com"
-MAX_PAGES = 5  # Nombre de pages à scraper
+TARGET_COUNT = 20  # Objectif : 20 dernières montres
+MAX_PAGES = 50     # Max pages à scraper pour atteindre l'objectif
 
-def get_watches():
-    all_watches = []
-    
-    for page in range(MAX_PAGES):
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+}
+
+def matches_keywords(text):
+    return any(keyword in text.lower() for keyword in KEYWORDS)
+
+def get_latest_watches():
+    watches = []
+    seen_links = set()
+    page = 0
+
+    while len(watches) < TARGET_COUNT and page < MAX_PAGES:
         url = f"{SEARCH_URL_BASE}?page={page}"
-        print(f"--- 🕵️ Scraping page {page + 1}/{MAX_PAGES} : {url} ---")
+        print(f"🕵️ Scraping page {page + 1}/{MAX_PAGES} : {url}")
         
         try:
-            response = requests.get(url, timeout=20, headers={'User-Agent': 'Mozilla/5.0'})
+            response = requests.get(url, headers=HEADERS, timeout=20)
             response.raise_for_status()
         except Exception as e:
-            print(f"❌ Erreur lors de la requête sur la page {page}: {e}")
-            continue
+            print(f"❌ Erreur page {page}: {e}")
+            break
 
         soup = BeautifulSoup(response.content, 'lxml')
-        
-        # SÉLECTEUR MIS À JOUR : Le site utilise le DSFR (Système de Design de l'État)
-        # La classe principale pour une "carte" produit est 'fr-card'
-        items = soup.find_all('div', class_='fr-card')
-        print(f"    Articles bruts trouvés sur cette page : {len(items)}")
+        cards = soup.find_all('div', class_='fr-card-product')
+        print(f"   📊 {len(cards)} cartes totales sur cette page")
 
-        if not items and page == 0:
-            print("⚠️ Aucun article trouvé sur la première page. Le sélecteur 'div.fr-card' est peut-être obsolète.")
-            # Si vous avez besoin de débugger, décommentez la ligne ci-dessous dans les logs de GitHub
-            # print(soup.prettify()[:2000])
-        
-        for item in items:
-            title_tag = item.find('h3', class_='fr-card__title')
-            
-            if not title_tag:
+        for card in cards:
+            title_elem = card.select_one('h3.fr-card-product__title a')
+            if not title_elem:
                 continue
-            
-            title = title_tag.get_text(strip=True)
 
-            # --- Outil de débogage ---
-            # Pour voir tous les articles que le script analyse, décommentez la ligne suivante :
-            # print(f"    [Analyse] Titre vu : {title}")
-            
-            description_tag = item.find('p', class_='fr-card__desc')
-            description = description_tag.get_text(strip=True) if description_tag else ""
-            
-            text_to_search = (title + " " + description).lower()
-            
-            if any(keyword in text_to_search for keyword in KEYWORDS):
-                print(f"✅ TROUVÉ : {title}")
+            title = title_elem.get_text(strip=True)
+            link = BASE_URL + title_elem['href'] if title_elem['href'].startswith('/') else title_elem['href']
 
-                link_tag = item.find('a', class_='fr-card__link') or title_tag.find('a')
-                link = "#"
-                if link_tag and 'href' in link_tag.attrs:
-                    link = link_tag['href']
-                    if not link.startswith('http'):
-                        link = BASE_URL + link
-                
-                # Le prix est dans un 'p' avec la classe 'fr-card__detail'
-                price_tag = item.find('p', class_='fr-card__detail')
-                price = price_tag.get_text(strip=True) if price_tag else "Prix n/c"
+            if link in seen_links:
+                continue
+            seen_links.add(link)
 
-                all_watches.append({
+            # Description complète
+            desc_elem = card.select_one('p.fr-card-product__desc')
+            desc_full = (desc_elem.get_text(strip=True) + " ") if desc_elem else ""
+            ellipsis_p = card.select_one('div.fr-text--sm.fr-ellipsis--3 p')
+            desc_full += ellipsis_p.get_text(strip=True) if ellipsis_p else ""
+
+            # Vérifier si c'est une montre
+            full_text = f"{title} {desc_full}"
+            if matches_keywords(full_text):
+                print(f"   ✅ MONTRE TROUVÉE: {title}")
+
+                # Prix
+                price_elem = card.select_one('p.fr-price__price')
+                price = price_elem.get_text(strip=True) if price_elem else "Prix n/c"
+
+                # Date clôture
+                closure_li = card.select_one('li:has(span.fr-icon-calendar-event-line)')
+                closure = closure_li.select_one('strong').get_text(strip=True) if closure_li else "N/C"
+
+                # Statut
+                status_elem = card.select_one('p.fr-badge--green-emeraude')
+                status = status_elem.get_text(strip=True) if status_elem else "N/C"
+
+                watches.append({
                     'title': title,
+                    'desc': desc_full[:200] + "..." if len(desc_full) > 200 else desc_full,
                     'price': price,
-                    'link': link,
-                    'desc': description[:150] + "..." if description else "Pas de description"
+                    'closure': closure,
+                    'status': status,
+                    'link': link
                 })
-        
-        time.sleep(1) # Soyons polis avec le serveur
 
-    # Dé-duplication au cas où un article apparaîtrait sur deux pages (rare mais possible)
-    unique_watches = {watch['link']: watch for watch in all_watches}.values()
-    return list(unique_watches)
+                if len(watches) >= TARGET_COUNT:
+                    break
+
+        page += 1
+        time.sleep(1)  # Pause polie
+
+    print(f"🎯 Total montres collectées: {len(watches)}")
+    return watches[:TARGET_COUNT]
 
 def generate_html(watches):
-    # (Le reste du code est identique à la V2, pas besoin de le modifier)
-    # ... (le code de generate_html et send_email reste le même que dans ma réponse précédente)
-    # ... je le remets ici pour que vous puissiez tout copier d'un coup.
-    html_content = f"""
+    date_str = datetime.datetime.now().strftime('%d/%m/%Y %H:%M')
+    
+    # Utilisation d'un TABLEAU pour une présentation claire (comme demandé dans mes guidelines)
+    table_rows = ""
+    if watches:
+        table_rows = "".join([
+            f"""
+            <tr>
+                <td><a href="{w['link']}" target="_blank">{w['title']}</a></td>
+                <td>{w['price']}</td>
+                <td>{w['status']}</td>
+                <td>{w['closure']}</td>
+                <td>{w['desc']}</td>
+            </tr>
+            """ for w in watches
+        ])
+    
+    html = f"""
     <!DOCTYPE html>
     <html lang="fr">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Montres Enchères Domaine</title>
+        <title>20 Dernières Montres - Enchères Domaine</title>
         <style>
-            body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #f5f5f5; }}
-            h1 {{ color: #000091; }} /* Bleu gouvernement */
-            .info {{ background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
-            .watch {{ background: #fff; border: 1px solid #e0e0e0; padding: 20px; margin-bottom: 15px; border-radius: 8px; transition: transform 0.2s; }}
-            .watch:hover {{ transform: translateY(-3px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }}
-            .watch h3 {{ margin-top: 0; }}
-            .watch a {{ color: #000091; text-decoration: none; font-size: 1.1em;}}
-            .watch a:hover {{ text-decoration: underline; }}
-            .price {{ color: #d9534f; font-weight: bold; font-size: 1.2em; }}
+            body {{ font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }}
+            h1 {{ color: #000091; }}
+            table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+            th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
+            th {{ background-color: #f2f2f2; font-weight: bold; }}
+            tr:nth-child(even) {{ background-color: #f9f9f9; }}
+            a {{ color: #000091; text-decoration: none; }}
+            a:hover {{ text-decoration: underline; }}
             .empty {{ text-align: center; padding: 50px; color: #666; }}
         </style>
     </head>
     <body>
-        <h1>⌚ Rapport du {datetime.datetime.now().strftime('%d/%m/%Y')}</h1>
-        <div class="info">
-            <p>Scraping réalisé sur les <strong>{MAX_PAGES} premières pages</strong> de la catégorie "Bijoux mode et art de vivre".</p>
-            <p><strong>{len(watches)}</strong> montre(s) trouvée(s) aujourd'hui.</p>
-        </div>
+        <h1>⌚ 20 Dernières Montres Mises en Ligne</h1>
+        <p>Mis à jour le {date_str} | Scraping sur catégorie "Bijoux, mode et art de vivre"</p>
+        <p><strong>{len(watches)}/{TARGET_COUNT}</strong> montres trouvées.</p>
         
-        {'<div class="empty"><h3>Aucune montre trouvée pour le moment.</h3><p>Le script a bien fonctionné, mais aucun article ne correspondait aux mots-clés.</p></div>' if not watches else ''}
-
-        {''.join([f'<div class="watch"><h3><a href="{w["link"]}" target="_blank">{w["title"]}</a></h3><p class="price">{w["price"]}</p><p>{w["desc"]}</p></div>' for w in watches])}
+        {('<div class="empty">Aucune montre trouvée aujourd'hui. Revenez demain !</div>' if not watches else 
+          f'<table><thead><tr><th>Titre</th><th>Prix</th><th>Statut</th><th>Clôture</th><th>Description</th></tr></thead><tbody>{table_rows}</tbody></table>')}
     </body>
     </html>
     """
-    return html_content
+    return html
 
-
-def send_email(watches_html, count):
+def send_email(html_content, count):
     if not EMAIL_SENDER or not EMAIL_PASSWORD:
-        print("❌ Identifiants email manquants. Pas d'envoi.")
+        print("❌ Secrets email manquants")
         return
 
     msg = MIMEMultipart('alternative')
-    msg['Subject'] = f"✅ {count} Montre(s) trouvée(s) - Enchères Domaine - {datetime.datetime.now().strftime('%d/%m/%Y')}"
+    msg['Subject'] = f"⌚ {count} Dernières Montres - {datetime.datetime.now().strftime('%d/%m/%Y')}"
     msg['From'] = EMAIL_SENDER
     msg['To'] = EMAIL_RECEIVER
-
-    part = MIMEText(watches_html, 'html')
-    msg.attach(part)
+    msg.attach(MIMEText(html_content, 'html'))
 
     try:
-        print(f"Tentative d'envoi d'email de {EMAIL_SENDER} vers {EMAIL_RECEIVER}...")
         server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
         server.login(EMAIL_SENDER, EMAIL_PASSWORD)
-        server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
+        text = msg.as_string()
+        server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, text)
         server.quit()
-        print("✅ Email envoyé avec succès !")
-    except smtplib.SMTPAuthenticationError:
-        print("❌ Erreur d'authentification SMTP. Vérifiez votre adresse et votre Mot de passe d'application.")
+        print("✅ EMAIL ENVOYÉ !")
     except Exception as e:
-        print(f"❌ Erreur lors de l'envoi de l'email: {e}")
+        print(f"❌ Erreur email: {e}")
 
 def main():
-    print("Démarrage du script v3...")
-    watches = get_watches()
-    print(f"--- Résultat final ---")
-    print(f"Total trouvé : {len(watches)} montre(s) correspondant aux critères.")
-
+    watches = get_latest_watches()
     html = generate_html(watches)
     
     with open("index.html", "w", encoding="utf-8") as f:
         f.write(html)
-        print("Fichier index.html mis à jour.")
+    print("📄 index.html mis à jour")
     
-    if watches:
-        send_email(html, len(watches))
-    else:
-        print("📭 Pas d'email envoyé car aucune montre trouvée.")
+    send_email(html, len(watches))  # TOUJOURS envoyé
 
 if __name__ == "__main__":
     main()
