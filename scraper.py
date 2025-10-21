@@ -100,11 +100,11 @@ def get_latest_watches():
 
     print(f"🎯 Total montres collectées: {len(watches)}")
     return watches[:TARGET_COUNT]
-
+    
 def generate_html(watches):
     date_str = datetime.datetime.now().strftime('%d/%m/%Y %H:%M')
     
-    # Utilisation d'un TABLEAU pour une présentation claire (comme demandé dans mes guidelines)
+    # Utilisation d'un TABLEAU pour une présentation claire
     table_rows = ""
     if watches:
         table_rows = "".join([
@@ -142,8 +142,8 @@ def generate_html(watches):
         <p>Mis à jour le {date_str} | Scraping sur catégorie "Bijoux, mode et art de vivre"</p>
         <p><strong>{len(watches)}/{TARGET_COUNT}</strong> montres trouvées.</p>
         
-        {('<div class="empty">Aucune montre trouvée aujourd'hui. Revenez demain !</div>' if not watches else 
-          f'<table><thead><tr><th>Titre</th><th>Prix</th><th>Statut</th><th>Clôture</th><th>Description</th></tr></thead><tbody>{table_rows}</tbody></table>')}
+        {'<div class="empty">Aucune montre trouvée aujourd\'hui. Revenez demain !</div>' if not watches else 
+         f'<table><thead><tr><th>Titre</th><th>Prix</th><th>Statut</th><th>Clôture</th><th>Description</th></tr></thead><tbody>{table_rows}</tbody></table>'}
     </body>
     </html>
     """
