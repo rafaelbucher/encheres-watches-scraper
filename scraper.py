@@ -34,9 +34,9 @@ def get_watches():
 
         soup = BeautifulSoup(response.content, 'lxml')
         
-        # Sélecteur mis à jour : tentative de trouver des éléments plus génériques si c-card échoue
+        # Sélecteur mis à jour : tentative de trouver des éléments plus génériques si fr-card-product échoue
         # On cherche souvent des <article> ou des <div> avec des classes spécifiques aux produits
-        items = soup.find_all('div', class_='c-card') or \
+        items = soup.find_all('div', class_='fr-card-product') or \
                 soup.find_all('article') or \
                 soup.find_all('div', class_='row-item') # Exemples de fallbacks
 
